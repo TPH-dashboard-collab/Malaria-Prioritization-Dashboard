@@ -1,0 +1,300 @@
+---
+title: "Extension de la CPS"
+output:
+  flexdashboard::flex_dashboard:
+    theme: 
+      version: 4
+      bootswatch: minty
+    orientation: columns
+    vertical_layout: scroll
+    source_code: embed
+    logo: logosmall.png
+runtime: shiny
+resource_files:
+- Data2024/futrs202401.rds
+- Data2024/namesZS.rds
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r LOAD LIBRARIES}
+library(tidyverse)
+library(plotly)
+```
+
+```{r}
+firstup <- function(x) {
+  substr(x, 1, 1) <- toupper( substr(x, 1, 1) )
+  x
+}
+
+casesAverted.sumAcrossYears <- function(allSims
+                                        , cases_col = "cases"
+                                        , level_aggr = "setting"
+                                        , eir_col = "EIR"
+                                        , EIR_names = c("low","middle","high")
+                                        , fut_cols = "fut"
+                                        , counterfactual = "BaU"
+                                        , year_start = 2023
+                                        , year_end = 2025){
+  
+  
+  
+  subSims = allSims %>% group_by(across(c("sub", "setting", "seed", "age",  fut_cols, eir_col))) %>%
+    filter(year %in% seq(year_start, year_end)) %>%
+    dplyr::summarise(cases.all = sum(get(cases_col))) %>%
+    group_by(across(c("sub","setting", "seed", eir_col))) %>%
+    mutate(ca = cases.all[get(fut_cols) == counterfactual] - cases.all) %>%
+    #keep only fut 2 (otherwise, duplicated rows)
+    #filter(get(fut_cols) == scenario) %>%
+    #select the extremes and take mean of middle
+    pivot_wider(names_from = eir_col, values_from = c(ca), id_cols = c("sub","setting", fut_cols, "seed", "age")) %>%
+    group_by(across(c("sub", "setting", "age", fut_cols))) %>% 
+    dplyr::summarise(ca.mean = mean(get(EIR_names[2]))
+                     , ca.sup = max(get(EIR_names[3]), get(EIR_names[2]), get(EIR_names[1]))
+                     , ca.inf = min(get(EIR_names[3]), get(EIR_names[2]), get(EIR_names[1]))) 
+  
+  if (level_aggr == "sub"){
+    aggrDF = subSims
+  }
+  if (level_aggr == "setting"){ 
+    #aggregate at setting level by summing all cases averted
+    aggrDF = subSims %>% group_by(across(c("setting", age, fut_cols))) %>%
+      dplyr::summarise(ca.tot.mean = sum(ca.mean)
+                       , ca.tot.sup = sum(ca.sup)
+                       , ca.tot.inf = sum(ca.inf)) 
+  }
+  if(level_aggr == "national"){
+    #aggregate at setting level by summing all cases averted
+    aggrDF = subSims %>% group_by(across(c("age", fut_cols))) %>%
+      dplyr::summarise(ca.tot.mean = sum(ca.mean)
+                       , ca.tot.sup = sum(ca.sup)
+                       , ca.tot.inf = sum(ca.inf)) 
+  }
+  return(aggrDF)
+}
+```
+
+```{r LOAD DATA AND DEFINE SCENARIOS}
+
+#setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+
+futrs <- readRDS("./Data2024/futrs202401.rds") %>%
+  mutate(commune=firstup(sub))
+
+names_ZS <- readRDS("./Data2024/namesZS.rds") %>%
+  filter(Extension!="") %>%
+  mutate(commune=firstup(sub))
+
+targeted_pop <- futrs %>% filter(year %in% 2024:2026,seed==1,EIR_type=="middle") %>%
+  filter((Extension=="Demo"&scenario=="Demo"&age=="5-10")|
+           (Extension=="Geo" &scenario=="Geo"&age=="0-5"))
+
+
+```
+
+Contexte
+====================================
+  
+  Le modèle de transmission du paludisme OpenMalaria a été calibré afin de représenter l'historique des interventions et l'intensité de la transmission dans chaque commune du Bénin jusqu'en 2022. Les interventions déjà allouées par le programme pour 2023 et au-delà (distribution de MIILD, TPIn et CPS dans l'Alibori et l'Atacora) ont ensuite été simulées. En outre, deux scénarios alternatifs ont été considérés : l'extension démographique de la CPS aux enfant de 5 à 10 ans dans l'Alibori et l'Atacora, et l'extension géographique de la CPS aux enfants de 0 à 5 ans dans le Borgou, la Donga et les Collines. Les estimations du modèle indiquent que l'extension géographique de la CPS permettrait d'éviter davantage de cas graves, à la fois en valeur absolue et par enfant protégé. Néanmoins, dans un contexte de ressources limitées, le nombre de cas graves pouvant être évités par franc CFA dépensé est un indicateur crucial. Ce tableau interactif permet de varier les coûts des deux extensions afin de déterminer laquelle serait préférable en prenant en compte à la fois leur impact et leur coût.
+
+### Hypothèses sur les coûts
+
+La population est estimée à partir du recensement de 2013 auquel on applique le taux d'accroissement de 3.5% mesuré entre 2002 et 2013.
+
+On considère qu'étendre la CPS aux enfants de 5 à 10 ans de l'Alibori et l'Atacora coûte autant par enfant que continuer la CPS dans une zone qui en bénéficie déjà (en moyenne 3059 francs CFA, moyenne des zones BNK et KGS selon le rapport sur la CPS 2021), puisque les canaux de distribution sont déjà en place.
+En revanche, on considère qu'étendre la CPS aux enfants de moins de 5 ans dans de nouveaux départements coûte autant par enfant que commencer la CPS dans de nouvelles zones (en moyenne 4242 francs CFA, moyenne des zones 2KP et NBT dans le rapport sur la CPS 2021).
+
+Ces hypothèses s'appuient uniquement sur les canaux de distribution, qui changent à partir de 2024 avec la politique de santé communautaire. Elles ignorent également la nécessité d'augmenter la dose administrée aux enfants de six ans et plus. L'utilisateur/trice est invité(e) à varier les coûts unitaires selon des hypothèses plus réalistes.
+
+Résultats
+=====================================  
+
+Inputs {.sidebar}
+-------------------------------------
+
+```{r}
+radioButtons("aggr_input", label = "Niveau d'aggrégation",
+            choices = c("Extension", "Département","Zone sanitaire", "Commune"),
+            selected="Extension")
+```
+
+```{r}
+radioButtons("ind_input", label = "Indicateur",
+            choices = c("Cas simples", "Cas graves","Cas simples et graves confondus", "Décès"),
+            selected="Cas graves")
+```
+
+```{r}
+selectInput("den_input", label = "Dénominateur"
+            , choices = c("Absolu","Par nouvel enfant ciblé", "Par franc CFA"), selected = "Par nouvel enfant ciblé")
+
+ conditionalPanel(
+             condition = "input.den_input == 'Par franc CFA'", 
+             "Coûts par enfant (en francs CFA)"
+                            )
+
+ conditionalPanel(
+             condition = "input.den_input == 'Par franc CFA'", 
+             textInput("cost_old", "Extension démographique aux enfants de 5 à 10 ans", "3059")
+                            )
+ 
+  conditionalPanel(
+             condition = "input.den_input == 'Par franc CFA'", 
+             textInput("cost_new", "Extension géographique aux enfants de 0 à 5 ans", "4242")
+                            )
+```
+
+
+row {data-height=400}
+-------------------------------------
+
+```{r}
+aggr_levels <- c("Extension","Admin1","nameZS","commune")
+
+PlotSMC <- function(futrs,names_ZS,aggr_input,ind_input,den_input,cost_old,cost_new){
+  multiplier <- 1
+  den_children<-"mille"
+  den_CFA <- "million"
+  if (ind_input=="Cas simples"){
+    ind<-"nUncomp"
+  }
+  if (ind_input=="Cas graves"){
+    ind<-"nSevere"
+  }
+  if (ind_input=="Cas simples et graves confondus"){
+    ind<-"OMcases"
+  }
+  if (ind_input=="Décès"){
+    ind<-"expectedDirectDeaths"
+    multiplier <- 10^3
+    den_children<-"un million de"
+    den_CFA <- "milliard"
+  }
+  
+  if (aggr_input=="Extension"){
+    aggr<-1
+  }
+  if (aggr_input=="Département"){
+    aggr<-2
+  }
+  if (aggr_input=="Zone sanitaire"){
+    aggr<-3
+  }
+  if (aggr_input=="Commune"){
+    aggr<-4
+  }
+  
+  targeted_pop_aggr <- targeted_pop %>%
+  group_by(!!!syms(aggr_levels[aggr]),age,year,scenario) %>%
+  summarise(pop=sum(pop)) %>%
+  group_by(!!!syms(aggr_levels[aggr]),age,scenario) %>%
+  summarise(pop=sum(pop)) %>%
+  ungroup() %>%
+  rename(target_pop="pop") %>% select(-age) %>%
+  mutate(scenario=paste0(scenario,"PBO2026"))
+
+  averted_cases <- casesAverted.sumAcrossYears(futrs %>% 
+                                                 filter(age=="0-100") %>%
+                                                 select(-setting) %>%
+                                                           rename("setting"=aggr_levels[aggr]),
+                                                          cases_col = ind,
+                                                          level_aggr = "setting",
+                                                          eir_col = "EIR_type",
+                                                          EIR_names = c("lower","middle","upper"),
+                                                          fut_cols = "scenario",
+                                                          counterfactual = "PBO2026",
+                                                          year_start = 2024,
+                                                          year_end = 2026) %>%
+  rename(!!aggr_levels[aggr]:="setting") %>%
+    left_join(names_ZS %>% select(aggr_levels[1:aggr]) %>% distinct()) %>%
+    filter((scenario=="DemoPBO2026"&Extension=="Demo")|
+             (scenario=="GeoPBO2026"&Extension=="Geo")) %>%
+    left_join(targeted_pop_aggr) %>%
+    mutate(SFR=ifelse(Extension=="Demo","démographique","géographique"),
+           cost=ifelse(Extension=="Demo",cost_old,cost_new))
+  
+  if (den_input=="Par franc CFA"){
+  data_plot=averted_cases %>%
+    mutate(mean=ca.tot.mean/(target_pop*cost)*10^6*multiplier,
+           min=ca.tot.inf/(target_pop*cost)*10^6*multiplier,
+           max=ca.tot.sup/(target_pop*cost)*10^6*multiplier)
+  
+  titre<-paste0("Somme des ", tolower(ind_input),
+                      " tous âges confondus additionnellement ",
+                      "évités entre 2024 et 2026\n",
+                      "pour 1 ",den_CFA," de francs CFA")
+  }
+  if (den_input=="Par nouvel enfant ciblé"){
+    data_plot=averted_cases %>%
+    mutate(mean=ca.tot.mean/target_pop*10^3*multiplier,
+           min=ca.tot.inf/target_pop*10^3*multiplier,
+           max=ca.tot.sup/target_pop*10^3*multiplier)
+  
+  titre<-paste0("Somme des ", tolower(ind_input),
+                      " tous âges confondus additionnellement ",
+                      "évités entre 2024 et 2026\n",
+                      "pour ", den_children, " nouveaux enfants ciblés")
+  }
+  if (den_input=="Absolu"){
+      data_plot=averted_cases %>%
+    mutate(mean=ca.tot.mean,
+           min=ca.tot.inf,
+           max=ca.tot.sup)
+      
+      titre<-paste0("Somme des ", tolower(ind_input),
+                      " tous âges confondus additionnellement ",
+                      "évités entre 2024 et 2026")
+  }
+  
+  if(aggr>2){
+    g1<-ggplot(data_plot,
+            aes(x=reorder(!!!syms(aggr_levels[aggr]),mean),y=mean,ymin=min,ymax=max,
+                fill=SFR,
+                color=SFR,
+                text=paste0(!!!syms(aggr_levels[aggr])," (",Admin1,")","<br>Enfants ciblés : ",round(target_pop),
+                            "<br>",round(mean,0),
+                            " (",round(min,0)," - ",round(max,0),")")
+            ))
+  }else{
+    g1<-ggplot(data_plot,
+            aes(x=reorder(!!!syms(aggr_levels[aggr]),mean),y=mean,ymin=min,ymax=max,
+                fill=SFR,
+                color=SFR,
+                text=paste0(!!!syms(aggr_levels[aggr]),"<br>Enfants ciblés : ",round(target_pop,-3)/1000,"K",
+                            "<br>",round(mean,0),
+                            " (",round(min,0)," - ",round(max,0),")")
+            ))
+  }
+    g <- g1+
+    geom_col(alpha=.7)+
+    geom_errorbar(width=.3)+
+    scale_fill_manual(name="Extension",
+                      values=c("#ffa400","#009ffd"))+
+    scale_color_manual(name="Extension",
+                       values=c("#ffa400","#009ffd"))+
+    theme_minimal()+
+    labs(x=aggr_input,y="",
+         title=titre)+
+    theme(axis.text.x=element_blank())
+    
+  
+  p<-ggplotly(g,tooltip = "text") %>%
+    layout(yaxis=list(title=list(font=list(size=10))))
+  
+ return(p)
+}
+
+#PlotSMC(futrs,names_ZS,"Commune","Cas graves","Par nouvel enfant ciblé",1,1)
+
+renderPlotly(PlotSMC(futrs,
+                        names_ZS,
+                        input$aggr_input,
+                        input$ind_input,
+                        input$den_input,
+                               as.integer(input$cost_old),
+                               as.integer(input$cost_new)))
+
+```

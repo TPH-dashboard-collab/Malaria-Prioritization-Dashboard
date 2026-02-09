@@ -11,7 +11,7 @@ ui <- dashboardPage(
   
   # Header
   dashboardHeader(title = "Malaria Prioritization Dashboard"),
-  
+
   # Sidebar com filtros
   dashboardSidebar(
     

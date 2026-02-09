@@ -9,7 +9,7 @@ library(leaflet)
 library(readr)
 
 # Carregar dados
-data <- read_csv("data/tza_sample_data.csv", show_col_types = FALSE)
+data <- read_csv("Malaria_Priorization/tza_sample_data.csv",show_col_types = FALSE)
 
 # Calcular impacto (BAU - NSP)
 bau <- data %>% filter(plan == "BAU")

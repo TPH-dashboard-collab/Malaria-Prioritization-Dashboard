@@ -49,10 +49,10 @@ po/*~
 rsconnect/
 
 # Data files - large files
-data/
-*.csv
-*.shp
-*.shx
-*.dbf
-*.prj
-*.rds
+#data/
+#*.csv
+#*.shp
+#*.shx
+#*.dbf
+#*.prj
+#*.rds

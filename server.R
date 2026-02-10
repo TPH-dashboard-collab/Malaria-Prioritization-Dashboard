@@ -1,5 +1,5 @@
 # ==============================================================================
-# SERVER - PRIORITIZATION DASHBOARD (VERSÃO CORRIGIDA)
+# SERVER - PRIORITIZATION DASHBOARD 
 # ==============================================================================
 library(shiny)
 library(dplyr)
@@ -8,15 +8,15 @@ library(leaflet)
 library(readr)
 library(sf)
 
-# Carregar dados
+# data
 data <- read_csv("Malaria_Priorization/tza_sample_data.csv", show_col_types = FALSE)
 
-# Carregar shapefiles
+# shapefiles
 shapefile <- st_read("Malaria_Priorization/shapefiles/shapefiles/TZA_shapefile_correctNamesDHIS2_Dist.shp", quiet = TRUE)
 shapefile <- st_transform(shapefile, 4326)
 
 # ============================================================================
-# CALCULAR IMPACTO CORRETAMENTE
+# IMPACT CALCULATION
 # ============================================================================
 
 # Agregar por região/ano/idade (média dos seeds)
@@ -29,7 +29,7 @@ data_agg <- data %>%
     .groups = "drop"
   )
 
-# Separar BAU e NSP (remover coluna 'plan' antes do join)
+# separation of BAU e NSP 
 bau <- data_agg %>% 
   filter(plan == "BAU") %>%
   select(admin_1, admin_2, year, age_group, expectedDirectDeaths, nUncomp, nSevere)
@@ -38,25 +38,27 @@ nsp <- data_agg %>%
   filter(plan == "NSP") %>%
   select(admin_1, admin_2, year, age_group, expectedDirectDeaths, nUncomp, nSevere)
 
-# Calcular impacto
-# NOTA: expectedDirectDeaths não varia entre BAU e NSP neste dataset
-# Por isso usamos nSevere (casos severos) como proxy para mortalidade
+# Calculate impact
+# NOTE: expectedDirectDeaths does not vary between BAU and NSP in this dataset
+# Therefore, we use nSevere (severe cases) as a proxy for mortality
+
 impact_data <- bau %>%
   inner_join(nsp,
     by = c("admin_1", "admin_2", "year", "age_group"),
     suffix = c("_bau", "_nsp")
   ) %>%
   mutate(
-    # USAR CASOS SEVEROS EVITADOS como métrica principal
+    # case averteds 
     severe_averted = nSevere_bau - nSevere_nsp,
     cases_averted = nUncomp_bau - nUncomp_nsp,
     
-    # Estimar mortes evitadas baseado em taxa de fatalidade de casos severos
-    # Assumindo CFR (Case Fatality Rate) de ~3% para casos severos
+    # Estimate deaths averted based on the case fatality rate of severe cases
+# Assuming a CFR (Case Fatality Rate) of ~3% for severe cases
+
     deaths_averted_estimated = severe_averted * 0.03
   )
 
-# Verificação (opcional - pode comentar em produção)
+# Verification
 cat("=== VERIFICAÇÃO DO CÁLCULO ===\n")
 cat("Total de linhas em impact_data:", nrow(impact_data), "\n")
 cat("Total de casos severos evitados:", format(sum(impact_data$severe_averted, na.rm = TRUE), big.mark = ","), "\n")
@@ -85,7 +87,7 @@ server <- function(input, output, session) {
     return(data_filtered)
   })
   
-  # VALUE BOX 1: Mortes evitadas (estimado)
+  # VALUE BOX 1: deaths averted
   output$deaths_averted <- renderValueBox({
     total <- sum(filtered_data()$deaths_averted_estimated, na.rm = TRUE)
     valueBox(
@@ -96,7 +98,7 @@ server <- function(input, output, session) {
     )
   })
   
-  # VALUE BOX 2: Casos evitados
+  # VALUE BOX 2: case averted
   output$cases_averted <- renderValueBox({
     total <- sum(filtered_data()$cases_averted, na.rm = TRUE)
     valueBox(
@@ -107,7 +109,7 @@ server <- function(input, output, session) {
     )
   })
   
-  # VALUE BOX 3 (OPCIONAL): Casos severos evitados
+  # VALUE BOX 3 (Optional): Case averted severe
   output$severe_averted <- renderValueBox({
     total <- sum(filtered_data()$severe_averted, na.rm = TRUE)
     valueBox(
@@ -118,7 +120,7 @@ server <- function(input, output, session) {
     )
   })
   
-  # RANKING CHART: Top 15 regiões por mortes evitadas
+  # RANKING CHART: Top 15 regions of deaths averted
   output$ranking_chart <- renderPlotly({
     top15 <- filtered_data() %>%
       group_by(admin_1) %>%
@@ -140,7 +142,7 @@ server <- function(input, output, session) {
       )
   })
   
-  # MAPA: Visualização geográfica
+  # MAPA: Geographic visualization 
   output$priority_map <- renderLeaflet({
     
     # Agregar por região
@@ -153,16 +155,16 @@ server <- function(input, output, session) {
         .groups = "drop"
       )
     
-    # Juntar com shapefile
+    # Joint of shapefile
     map_sf <- shapefile %>%
       left_join(map_data, by = c("Region_Nam" = "admin_1"))
     
-    # Substituir NA por 0
+    # Changes of NA to 0
     map_sf$total_cases[is.na(map_sf$total_cases)] <- 0
     map_sf$total_severe[is.na(map_sf$total_severe)] <- 0
     map_sf$total_deaths[is.na(map_sf$total_deaths)] <- 0
     
-    # Paleta de cores baseada em CASOS SEVEROS (melhor indicador)
+    # colours of the map based on the number of severe cases averted
     pal <- colorBin(
       palette = "YlOrRd",
       domain = map_sf$total_severe,
@@ -170,7 +172,7 @@ server <- function(input, output, session) {
       na.color = "#808080"
     )
     
-    # Criar mapa
+    # Map creation
     leaflet(map_sf) %>%
       addTiles() %>%
       setView(lng = 35, lat = -6, zoom = 6) %>%

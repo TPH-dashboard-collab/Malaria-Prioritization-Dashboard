@@ -19,7 +19,7 @@ ui <- dashboardPage(
     selectInput("region", "Region:", 
                 choices = c("All" = "all"), 
                 selected = "all",
-                multiple = TRUE),  # Allow multiple region selection
+                multiple = TRUE),
     
     # Year range slider
     sliderInput("year_range", "Year:", 
@@ -31,16 +31,15 @@ ui <- dashboardPage(
   # Body - Single tab layout
   dashboardBody(
     
-    # Row 1: Value boxes
+    # Row 1: Value boxes (2 instead of 3)
     fluidRow(
-      valueBoxOutput("deaths_averted", width = 4),
-      valueBoxOutput("cases_averted", width = 4),
-      valueBoxOutput("severe_averted", width = 4)
+      valueBoxOutput("cases_averted", width = 6),
+      valueBoxOutput("severe_averted", width = 6)
     ),
     
     # Row 2: Ranking chart
     fluidRow(
-      box(title = "Top 15 Regions by Deaths Averted",
+      box(title = "Top 15 Regions by Severe Cases Averted",
           width = 12,
           plotlyOutput("ranking_chart", height = 500))
     ),

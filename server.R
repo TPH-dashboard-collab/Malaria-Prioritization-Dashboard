@@ -16,14 +16,25 @@ shapefile <- st_read("Malaria_Priorization/shapefiles/shapefiles/TZA_shapefile_c
 shapefile <- st_transform(shapefile, 4326)
 
 # ============================================================================
+# DATA FILTERING
+# ============================================================================
+
+# FILTER: Keep only EIR_mean (remove confidence intervals)
+data_filtered <- data |>
+  filter(EIR_CI == "EIR_mean")
+
+cat("=== DATA FILTERING ===\n")
+cat("Original rows:", nrow(data), "\n")
+cat("After EIR_mean filter:", nrow(data_filtered), "\n")
+
+# ============================================================================
 # IMPACT CALCULATION
 # ============================================================================
 
 # Aggregate by region/year/age (average across seeds)
-data_agg <- data |>
+data_agg <- data_filtered |>
   group_by(plan, admin_1, admin_2, year, age_group) |>
   summarise(
-    expectedDirectDeaths = mean(expectedDirectDeaths, na.rm = TRUE),
     nUncomp = mean(nUncomp, na.rm = TRUE),
     nSevere = mean(nSevere, na.rm = TRUE),
     .groups = "drop"
@@ -32,39 +43,34 @@ data_agg <- data |>
 # Separate BAU and NSP
 bau <- data_agg |> 
   filter(plan == "BAU") |>
-  select(admin_1, admin_2, year, age_group, expectedDirectDeaths, nUncomp, nSevere)
+  select(admin_1, admin_2, year, age_group, nUncomp, nSevere)
 
 nsp <- data_agg |> 
   filter(plan == "NSP") |>
-  select(admin_1, admin_2, year, age_group, expectedDirectDeaths, nUncomp, nSevere)
+  select(admin_1, admin_2, year, age_group, nUncomp, nSevere)
 
-# Calculate impact
-# NOTE: expectedDirectDeaths does not vary between BAU and NSP in this dataset
-# Therefore, we use nSevere (severe cases) as a proxy for mortality
+# Calculate impact (BAU - NSP)
+# NOTE: Deaths metric excluded per supervisor guidance (2026-02-11)
+# Will be added when updated data with correct death values is available
 impact_data <- bau |>
   inner_join(nsp,
     by = c("admin_1", "admin_2", "year", "age_group"),
     suffix = c("_bau", "_nsp")
   ) |>
   mutate(
-    # Cases averted
-    severe_averted = nSevere_bau - nSevere_nsp,
     cases_averted = nUncomp_bau - nUncomp_nsp,
-    
-    # Estimate deaths averted based on CFR of ~3% for severe cases
-    deaths_averted_estimated = severe_averted * 0.03
+    severe_averted = nSevere_bau - nSevere_nsp
   )
 
 # Verification
-cat("=== CALCULATION VERIFICATION ===\n")
+cat("\n=== IMPACT CALCULATION VERIFICATION ===\n")
 cat("Total rows in impact_data:", nrow(impact_data), "\n")
-cat("Total severe cases averted:", format(sum(impact_data$severe_averted, na.rm = TRUE), big.mark = ","), "\n")
-cat("Total cases averted:", format(sum(impact_data$cases_averted, na.rm = TRUE), big.mark = ","), "\n")
-cat("Total deaths averted (estimated):", format(round(sum(impact_data$deaths_averted_estimated, na.rm = TRUE)), big.mark = ","), "\n")
+cat("Cases averted (total):", format(round(sum(impact_data$cases_averted, na.rm = TRUE)), big.mark = ","), "\n")
+cat("Severe cases averted (total):", format(round(sum(impact_data$severe_averted, na.rm = TRUE)), big.mark = ","), "\n")
 
 server <- function(input, output, session) {
   
-  # region filter choices
+  # Update region filter choices
   observe({
     regions <- unique(impact_data$admin_1)
     updateSelectInput(session, "region",
@@ -76,7 +82,7 @@ server <- function(input, output, session) {
   filtered_data <- reactive({
     data_filtered <- impact_data
     
-  #Support multiple region selection
+    # Support multiple region selection
     if (!is.null(input$region) && !"all" %in% input$region && length(input$region) > 0) {
       data_filtered <- data_filtered |> filter(admin_1 %in% input$region)
     }
@@ -88,18 +94,7 @@ server <- function(input, output, session) {
     return(data_filtered)
   })
   
-  # VALUE BOX 1: Deaths averted (estimated)
-  output$deaths_averted <- renderValueBox({
-    total <- sum(filtered_data()$deaths_averted_estimated, na.rm = TRUE)
-    valueBox(
-      format(round(total), big.mark = ","),
-      "Deaths Averted (estimated)",
-      icon = icon("heart"),
-      color = "red"
-    )
-  })
-  
-  # VALUE BOX 2: Cases averted
+  # VALUE BOX 1: Cases averted
   output$cases_averted <- renderValueBox({
     total <- sum(filtered_data()$cases_averted, na.rm = TRUE)
     valueBox(
@@ -110,7 +105,7 @@ server <- function(input, output, session) {
     )
   })
   
-  # VALUE BOX 3: Severe cases averted
+  # VALUE BOX 2: Severe cases averted
   output$severe_averted <- renderValueBox({
     total <- sum(filtered_data()$severe_averted, na.rm = TRUE)
     valueBox(
@@ -121,11 +116,11 @@ server <- function(input, output, session) {
     )
   })
   
-  # RANKING CHART: Top 15 regions by deaths averted
+  # RANKING CHART: Top 15 regions by severe cases averted
   output$ranking_chart <- renderPlotly({
     top15 <- filtered_data() |>
       group_by(admin_1) |>
-      summarise(total = sum(deaths_averted_estimated, na.rm = TRUE), .groups = "drop") |>
+      summarise(total = sum(severe_averted, na.rm = TRUE), .groups = "drop") |>
       arrange(desc(total)) |>
       head(15) |>
       mutate(admin_1 = factor(admin_1, levels = rev(admin_1)))
@@ -136,8 +131,8 @@ server <- function(input, output, session) {
       marker = list(color = "#e74c3c")
     ) |>
       layout(
-        title = "Top 15 Regions by Deaths Averted (Estimated)",
-        xaxis = list(title = "Deaths Averted (Estimated)"),
+        title = "Top 15 Regions by Severe Cases Averted",
+        xaxis = list(title = "Severe Cases Averted"),
         yaxis = list(title = ""),
         margin = list(l = 150)
       )
@@ -152,18 +147,12 @@ server <- function(input, output, session) {
       summarise(
         total_cases = sum(cases_averted, na.rm = TRUE),
         total_severe = sum(severe_averted, na.rm = TRUE),
-        total_deaths = sum(deaths_averted_estimated, na.rm = TRUE),
         .groups = "drop"
       )
     
     # Join with shapefile
     map_sf <- shapefile |>
       left_join(map_data, by = c("Region_Nam" = "admin_1"))
-    
-    # Replace NA with 0
-    map_sf$total_cases[is.na(map_sf$total_cases)] <- 0
-    map_sf$total_severe[is.na(map_sf$total_severe)] <- 0
-    map_sf$total_deaths[is.na(map_sf$total_deaths)] <- 0
     
     # Color palette based on severe cases averted
     pal <- colorBin(
@@ -191,13 +180,15 @@ server <- function(input, output, session) {
         ),
         label = ~paste0(
           Region_Nam, ": ",
-          format(round(total_severe), big.mark = ","), " severe cases averted"
+          ifelse(is.na(total_severe), "No data", 
+                 paste(format(round(total_severe), big.mark = ","), "severe cases averted"))
         ),
         popup = ~paste0(
           "<strong>", Region_Nam, "</strong><br/>",
-          "Cases Averted: ", format(round(total_cases), big.mark = ","), "<br/>",
-          "Severe Cases Averted: ", format(round(total_severe), big.mark = ","), "<br/>",
-          "Deaths Averted (est.): ", format(round(total_deaths), big.mark = ",")
+          ifelse(is.na(total_cases), "No data available", paste0(
+            "Cases Averted: ", format(round(total_cases), big.mark = ","), "<br/>",
+            "Severe Cases Averted: ", format(round(total_severe), big.mark = ",")
+          ))
         )
       ) |>
       addLegend(
@@ -205,7 +196,8 @@ server <- function(input, output, session) {
         pal = pal,
         values = ~total_severe,
         title = "Severe Cases Averted",
-        opacity = 0.7
+        opacity = 0.7,
+        na.label = "No data"
       )
   })
 }

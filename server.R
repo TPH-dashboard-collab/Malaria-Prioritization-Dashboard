@@ -19,7 +19,7 @@ shapefile <- st_transform(shapefile, 4326)
 # DATA FILTERING
 # ============================================================================
 
-# FILTER: Keep only EIR_mean (remove confidence intervals)
+# FILTER: Keep only EIR_mean 
 data_filtered <- data |>
   filter(EIR_CI == "EIR_mean")
 
@@ -50,8 +50,8 @@ nsp <- data_agg |>
   select(admin_1, admin_2, year, age_group, nUncomp, nSevere)
 
 # Calculate impact (BAU - NSP)
-# NOTE: Deaths metric excluded per supervisor guidance (2026-02-11)
-# Will be added when updated data with correct death values is available
+# NOTE: Deaths metric excluded  (2026-02-11, only because before the diference was not very clear)
+
 impact_data <- bau |>
   inner_join(nsp,
     by = c("admin_1", "admin_2", "year", "age_group"),

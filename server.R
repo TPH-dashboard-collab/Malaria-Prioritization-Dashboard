@@ -131,7 +131,7 @@ server <- function(input, output, session) {
       marker = list(color = "#e74c3c")
     ) |>
       layout(
-        title = "Top 15 Regions by Severe Cases Averted",
+        title = "Regions by Severe Cases Averted",
         xaxis = list(title = "Severe Cases Averted"),
         yaxis = list(title = ""),
         margin = list(l = 150)

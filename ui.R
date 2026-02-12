@@ -39,7 +39,7 @@ ui <- dashboardPage(
     
     # Row 2: Ranking chart
     fluidRow(
-      box(title = "Top 15 Regions by Severe Cases Averted",
+      box(title = "Regions by Severe Cases Averted",
           width = 12,
           plotlyOutput("ranking_chart", height = 500))
     ),

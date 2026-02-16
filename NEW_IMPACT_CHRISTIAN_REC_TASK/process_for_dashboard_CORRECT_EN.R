@@ -1,6 +1,5 @@
 # ==============================================================================
 # DASHBOARD DATA PROCESSING - QUANTILES AND RANKINGS
-# Following Roland's document exactly
 # ==============================================================================
 
 library(data.table)

@@ -1,6 +1,5 @@
 # ==============================================================================
 # CALCULATE INTERVENTION IMPACTS - CORRECT METHOD
-# Following Roland's document exactly
 # ==============================================================================
 # 
 # PURPOSE:

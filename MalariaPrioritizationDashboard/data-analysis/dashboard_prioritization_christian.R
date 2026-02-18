@@ -19,12 +19,13 @@ library(htmltools)
 # ==============================================================================
 
 # Load impacts, quantiles and rankings from Christian's method
-impacts <- fread("impacts_christian_method.csv")
-quantiles_data <- fread("quantiles_christian_method.csv")
-rankings_data <- fread("rankings_christian_method.csv")
+# DEPOIS (correcto)
+impacts <- fread("outputs/impacts_christian_method.csv")
+quantiles_data <- fread("outputs/quantiles_christian_method.csv")
+rankings_data  <- fread("outputs/rankings_christian_method.csv")
 
 # Load shapefile
-shapefiles <- read_sf("shapefiles/shapefiles/TZA_shapefile_correctNamesDHIS2_Dist.shp")
+shapefiles <- read_sf("../data/shapefiles/TZA_shapefile_correctNamesDHIS2_Dist.shp")
 shapefiles <- st_transform(shapefiles, 4326)  # WGS84
 
 cat("✓ Data loaded successfully\n")

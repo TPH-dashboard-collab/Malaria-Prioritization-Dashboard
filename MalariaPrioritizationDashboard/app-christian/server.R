@@ -16,7 +16,7 @@ library(htmltools)
 server <- function(input, output, session) {
 
   # ----------------------------------------------------------------------------
-  # Preencher dropdowns dinamicamente a partir dos dados carregados no run_app
+  # Populate dropdowns dynamically from the data loaded in run_app
   # ----------------------------------------------------------------------------
   observe({
     updateSelectInput(session, "age_filter",
@@ -36,7 +36,7 @@ server <- function(input, output, session) {
   })
 
   # ----------------------------------------------------------------------------
-  # TAB HOME — value boxes e gráfico top 5
+  # HOME TAB — value boxes and top 5 chart
   # ----------------------------------------------------------------------------
   output$vbox_impacts <- renderValueBox({
     valueBox(format(nrow(impacts), big.mark = ","),

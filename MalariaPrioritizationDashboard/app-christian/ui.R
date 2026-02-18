@@ -28,7 +28,7 @@ ui <- dashboardPage(
     selectInput(
       "age_filter",
       "Age Group:",
-      choices = c("All" = "all"),  # preenchido dinamicamente no server
+      choices = c("All" = "all"),  # populated dynamically in the server
       selected = "all"
     ),
     

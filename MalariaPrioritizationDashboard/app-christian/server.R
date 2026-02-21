@@ -14,27 +14,27 @@ library(RColorBrewer)
 library(htmltools)
 
 server <- function(input, output, session) {
-
+  
   # ----------------------------------------------------------------------------
   # Populate dropdowns dynamically from the data loaded in run_app
   # ----------------------------------------------------------------------------
   observe({
     updateSelectInput(session, "age_filter",
-      choices = c("All" = "all", sort(unique(quantiles_data$age_group))))
-
+                      choices = c("All" = "all", sort(unique(quantiles_data$age_group))))
+    
     updateCheckboxGroupInput(session, "interventions_map",
-      choices  = sort(unique(quantiles_data$intervention)),
-      selected = head(sort(unique(quantiles_data$intervention)), 3))
-
+                             choices  = sort(unique(quantiles_data$intervention)),
+                             selected = head(sort(unique(quantiles_data$intervention)), 3))
+    
     updateCheckboxGroupInput(session, "interventions_ranking",
-      choices  = sort(unique(rankings_data$intervention)),
-      selected = head(sort(unique(rankings_data$intervention)), 3))
-
+                             choices  = sort(unique(rankings_data$intervention)),
+                             selected = head(sort(unique(rankings_data$intervention)), 3))
+    
     updateCheckboxGroupInput(session, "interventions_compare",
-      choices  = sort(unique(quantiles_data$intervention)),
-      selected = head(sort(unique(quantiles_data$intervention)), 4))
+                             choices  = sort(unique(quantiles_data$intervention)),
+                             selected = head(sort(unique(quantiles_data$intervention)), 4))
   })
-
+  
   # ----------------------------------------------------------------------------
   # HOME TAB — value boxes and top 5 chart
   # ----------------------------------------------------------------------------
@@ -42,24 +42,24 @@ server <- function(input, output, session) {
     valueBox(format(nrow(impacts), big.mark = ","),
              "Impacts Calculated", icon = icon("calculator"), color = "blue")
   })
-
+  
   output$vbox_interventions <- renderValueBox({
     valueBox(length(unique(impacts$intervention)),
              "Interventions", icon = icon("medkit"), color = "green")
   })
-
+  
   output$vbox_districts <- renderValueBox({
     valueBox(length(unique(impacts$admin_2)),
              "Districts", icon = icon("map-marker"), color = "yellow")
   })
-
+  
   output$plot_top5 <- renderPlot({
     top5 <- impacts %>%
       group_by(intervention) %>%
       summarise(mean_impact = mean(value, na.rm = TRUE), .groups = "drop") %>%
       arrange(desc(mean_impact)) %>%
       head(5)
-
+    
     ggplot(top5, aes(x = reorder(intervention, mean_impact), y = mean_impact)) +
       geom_bar(stat = "identity", fill = "#3498db", alpha = 0.8) +
       geom_text(aes(label = format(round(mean_impact), big.mark = ",")),
@@ -71,16 +71,16 @@ server <- function(input, output, session) {
       theme(plot.title = element_text(face = "bold", size = 16),
             panel.grid.major.y = element_blank())
   })
-
+  
   # ----------------------------------------------------------------------------
   # TAB MAPS
   # ----------------------------------------------------------------------------
   maps_data <- eventReactive(input$generate_maps, {
     req(input$interventions_map)
-
+    
     filtered_data <- quantiles_data %>%
       filter(intervention %in% input$interventions_map)
-
+    
     if (input$age_filter != "all") {
       filtered_data <- filtered_data %>%
         filter(age_group == input$age_filter) %>%
@@ -96,61 +96,61 @@ server <- function(input, output, session) {
         ) %>%
         ungroup()
     }
-
+    
     map_data <- shapefiles %>%
       left_join(filtered_data, by = "admin_2")
-
+    
     list(data = map_data, interventions = input$interventions_map)
   })
-
+  
   output$maps_container <- renderUI({
     data <- maps_data()
     req(data)
-
+    
     n_maps <- length(data$interventions)
     n_cols <- if (n_maps <= 2) n_maps else if (n_maps <= 4) 2 else 3
-
+    
     outputs <- lapply(1:n_maps, function(i) {
       box(width = 12 / n_cols, title = data$interventions[i],
           status = "success", solidHeader = TRUE,
           leafletOutput(paste0("map_", i), height = "400px"))
     })
-
+    
     n_rows <- ceiling(n_maps / n_cols)
     rows <- lapply(1:n_rows, function(r) {
       start_idx <- (r - 1) * n_cols + 1
       end_idx   <- min(r * n_cols, n_maps)
       fluidRow(outputs[start_idx:end_idx])
     })
-
+    
     do.call(tagList, rows)
   })
-
+  
   observe({
     data <- maps_data()
     req(data)
-
+    
     for (i in seq_along(data$interventions)) {
       local({
         idx    <- i
         interv <- data$interventions[idx]
-
+        
         output[[paste0("map_", idx)]] <- renderLeaflet({
           data_interv <- data$data %>% filter(intervention == interv)
-
+          
           pal <- colorFactor(
             palette  = c("#d73027", "#fc8d59", "#fee08b", "#91cf60", "#1a9850"),
             domain   = 1:5,
             na.color = "gray"
           )
-
+          
           labels <- sprintf(
             "<strong>%s</strong><br/>Impact: %s<br/>Quantile: %s",
             data_interv$admin_2,
             format(round(data_interv$mean_impact), big.mark = ","),
             data_interv$quantile_value
           ) %>% lapply(HTML)
-
+          
           leaflet(data_interv) %>%
             addProviderTiles(providers$CartoDB.Positron) %>%
             addPolygons(
@@ -174,23 +174,23 @@ server <- function(input, output, session) {
       })
     }
   })
-
+  
   # ----------------------------------------------------------------------------
   # TAB RANKINGS
   # ----------------------------------------------------------------------------
   output$plot_rankings <- renderPlot({
     req(input$interventions_ranking)
-
+    
     data_filtered <- rankings_data %>%
       filter(intervention %in% input$interventions_ranking) %>%
       group_by(intervention) %>%
       arrange(desc(mean_impact)) %>%
       slice_head(n = input$top_n) %>%
       ungroup()
-
+    
     n      <- length(unique(data_filtered$intervention))
     n_cols <- if (n <= 2) n else 2
-
+    
     ggplot(data_filtered,
            aes(x = reorder(admin_2, mean_impact), y = mean_impact)) +
       geom_bar(stat = "identity", fill = "#3498db", alpha = 0.8) +
@@ -201,7 +201,7 @@ server <- function(input, output, session) {
       facet_wrap(~intervention, scales = "free", ncol = n_cols) +
       coord_flip() +
       labs(title    = paste("Top", input$top_n,
-                            "Districts by Intervention (Christian's Method)"),
+                            "Districts by Intervention"),
            subtitle = "Error bars show min-max range",
            x = "", y = "Cumulative Cases Averted (mean)") +
       theme_minimal(base_size = 12) +
@@ -214,24 +214,24 @@ server <- function(input, output, session) {
     n_rows <- ceiling(n / 2)
     max(400, n_rows * 350)
   })
-
+  
   # ----------------------------------------------------------------------------
   # TAB ANALYSIS
   # ----------------------------------------------------------------------------
   comparison_data_all <- eventReactive(input$compare_all, {
     req(input$interventions_compare)
-
+    
     quantiles_data %>%
       filter(intervention %in% input$interventions_compare) %>%
       { if (input$age_filter != "all") filter(., age_group == input$age_filter) else . } %>%
       group_by(intervention, admin_2) %>%
       summarise(mean_impact = mean(mean_impact, na.rm = TRUE), .groups = "drop")
   })
-
+  
   output$plot_comparison_all <- renderPlot({
     data <- comparison_data_all()
     req(data)
-
+    
     if (input$comparison_type == "district") {
       ggplot(data, aes(x = reorder(intervention, mean_impact),
                        y = mean_impact, fill = intervention)) +
@@ -257,7 +257,7 @@ server <- function(input, output, session) {
               legend.position = "none")
     }
   })
-
+  
   # ----------------------------------------------------------------------------
   # TAB DATA
   # ----------------------------------------------------------------------------
@@ -272,7 +272,7 @@ server <- function(input, output, session) {
       filter   = "top"
     )
   })
-
+  
   output$table_rankings <- renderDT({
     datatable(
       rankings_data %>%

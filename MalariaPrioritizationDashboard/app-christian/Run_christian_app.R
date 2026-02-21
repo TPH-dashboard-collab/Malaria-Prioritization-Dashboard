@@ -27,3 +27,4 @@ cat("Data loaded successfully!\n")
 
 # Launch the app
 shiny::runApp("app-christian", launch.browser = TRUE)
+

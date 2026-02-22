@@ -22,7 +22,7 @@ library(tidyr)
 
 cat("Loading data...\n")
 
-df <- fread("TZ_subset_10regions_1seed.csv")
+df <- fread("../data/TZ_subset_10regions_1seed.csv")
 
 cat("✓ Raw data loaded:", nrow(df), "rows\n")
 
@@ -237,7 +237,7 @@ cat("✓ Rankings calculated:", nrow(rankings_data), "rows\n")
 # ==============================================================================
 
 cat("Loading shapefile...\n")
-shapefiles <- read_sf("shapefiles/shapefiles/TZA_shapefile_correctNamesDHIS2_Dist.shp")
+shapefiles <- read_sf("../data/shapefiles/TZA_shapefile_correctNamesDHIS2_Dist.shp")
 shapefiles <- st_transform(shapefiles, 4326)
 cat("✓ Shapefile loaded:", nrow(shapefiles), "districts\n\n")
 

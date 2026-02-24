@@ -35,10 +35,8 @@ ui <- dashboardPage(
     tags$div(
       style = "padding: 0 15px; font-size: 11px; color: #999;",
       HTML("<strong>Plan:</strong> NSP (National Strategic Plan)<br>
-            <strong>Method:</strong> Christian's per_interv_impact()<br>
             <strong>Metric:</strong> nUncompCum<br>
-            <strong>Districts:</strong> 10<br>
-            <strong>Validated:</strong> Myroslava Volosko ✓")
+            <strong>Districts:</strong> 10<br>")
     )
   ),
 
@@ -61,8 +59,7 @@ ui <- dashboardPage(
       # ========================================================================
       tabItem(tabName = "home",
               h2("Tanzania Malaria Intervention Prioritization"),
-              h4("NSP Plan - Validated by Supervisors"),
-
+             
               fluidRow(
                 box(
                   width = 12, title = "Dashboard Overview",
@@ -224,7 +221,7 @@ ui <- dashboardPage(
                   tags$div(
                     style = "margin-top: 10px; padding: 10px; background-color: #fff3cd; border-radius: 5px;",
                     p(class = "small",
-                      "📌 ", strong("Roland's Specification:"), " Bar graphs in decreasing order of IMPACT,
+                      "📌 ", strong("Specification:"), " Bar graphs in decreasing order of IMPACT,
                        showing top 10 districts by default. Error bars represent min/max confidence intervals.")
                   )
                 )
@@ -265,3 +262,4 @@ ui <- dashboardPage(
     )
   )
 )
+

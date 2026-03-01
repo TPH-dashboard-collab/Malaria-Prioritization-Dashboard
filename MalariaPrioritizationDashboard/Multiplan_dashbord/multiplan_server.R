@@ -297,7 +297,7 @@ server <- function(input, output, session) {
             "<strong>%s</strong><br/>
              <strong>Plan:</strong> %s<br/>
              <strong>Intervention:</strong> %s<br/>
-             <strong>Mean Impact:</strong> %s cases<br/>
+             <strong>Cases Averted:</strong> %s cases<br/>
              <strong>Quantile:</strong> %s<br/>
              <strong>Priority:</strong> %s",
             data_interv$admin_2,

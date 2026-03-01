@@ -21,7 +21,7 @@ server <- function(input, output, session) {
       coord_flip() +
       labs(
         title    = "Interventions with Highest Mean Impact (NSP)",
-        subtitle = "Cumulative Cases Averted (2025-2030)",
+        subtitle = "Cumulative Cases Averted (2026-2030)",
         x = "", y = "Cases Averted"
       ) +
       theme_minimal(base_size = 14) +

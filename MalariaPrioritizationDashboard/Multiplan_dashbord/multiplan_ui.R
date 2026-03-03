@@ -1,45 +1,52 @@
 # ==============================================================================
-# ui.R — Multi-Plan Dashboard (NSP + BAU + Customized)
+# ui.R — Multi-Plan Dashboard (Restructured)
+# One intervention at a time — Map + Ranking on the same page
 # ==============================================================================
 
 ui <- dashboardPage(
   skin = "blue",
   
-  dashboardHeader(title = "Tanzania Prioritization Dashboard"),
+  dashboardHeader(title = "Tanzania Prioritization"),
   
   # ============================================================================
   # SIDEBAR
   # ============================================================================
   dashboardSidebar(
     sidebarMenu(
-      menuItem("🏠 Home",     tabName = "home",     icon = icon("home")),
-      menuItem("🗺️ Maps",     tabName = "maps",     icon = icon("map")),
-      menuItem("📊 Rankings", tabName = "rankings", icon = icon("chart-bar")),
-      menuItem("📋 Data",     tabName = "data",     icon = icon("table"))
+      menuItem("🏠 Home",         tabName = "home",         icon = icon("home")),
+      menuItem("🔍 Explore",      tabName = "explore",      icon = icon("map")),
+      menuItem("📋 Data",         tabName = "data",         icon = icon("table"))
     ),
     
     hr(),
     h4("Filters:", style = "padding: 0 15px;"),
     
-    # ── Plan selector ──────────────────────────────────────────────
-    selectInput(
-      "plan_filter",
-      "Plan:",
-      choices = setNames(ALL_PLANS, ALL_PLANS),
-      selected = "NSP"
-    ),
+    # Plan
+    selectInput("plan_filter", "Plan:",
+                choices = setNames(ALL_PLANS, ALL_PLANS),
+                selected = "NSP"),
     
-    # ── Age selector ───────────────────────────────────────────────
-    selectInput(
-      "age_filter",
-      "Age Group:",
-      choices  = c("All" = "all", sort(unique(avg_impact_all$age_group))),
-      selected = "all"
-    ),
+    # Age
+    selectInput("age_filter", "Age Group:",
+                choices  = c("All ages" = "0-100", "Children (0-5)" = "0-5"),
+                selected = "0-100"),
+    
+    # Metric
+    selectInput("metric_filter", "Metric:",
+                choices  = c("Cases Averted"           = "mean_impact",
+                             "Cases Averted per 1,000" = "impact_per_1000"),
+                selected = "mean_impact"),
+    
+    # Intervention — populated dynamically in server
+    selectInput("intervention_filter", "Intervention:",
+                choices  = NULL,
+                selected = NULL),
+    
+    # Top N
+    sliderInput("top_n", "Top N districts:",
+                min = 3, max = 10, value = 5, step = 1),
     
     hr(),
-    
-    # Info box that updates with selected plan
     uiOutput("sidebar_info")
   ),
   
@@ -50,20 +57,16 @@ ui <- dashboardPage(
     tags$head(
       tags$style(HTML("
         .leaflet-container { background: #ffffff; }
-        .box { margin-bottom: 20px; }
-        .small { font-size: 11px; color: #777; }
-        .plan-badge {
+        .box { margin-bottom: 15px; }
+        .rank-badge {
           display: inline-block;
-          padding: 3px 10px;
-          border-radius: 12px;
+          padding: 2px 8px;
+          border-radius: 10px;
           font-weight: bold;
-          font-size: 12px;
+          font-size: 11px;
           color: white;
-          margin-left: 8px;
         }
-        .plan-NSP         { background-color: #2980b9; }
-        .plan-BAU         { background-color: #7f8c8d; }
-        .plan-Customized  { background-color: #8e44ad; }
+        .content-wrapper { background-color: #f4f6f9; }
       "))
     ),
     
@@ -76,158 +79,134 @@ ui <- dashboardPage(
               
               fluidRow(
                 column(12,
-                       h2(uiOutput("home_title_inline")),
-                       p("Select a plan in the sidebar to explore its results.")
+                       h2(uiOutput("home_title")),
+                       p("Select a plan, age group and metric in the sidebar. Use the Explore tab to analyse one intervention at a time.")
                 )
               ),
               
-              # ── Value boxes for selected plan ────────────────────────────
+              # Summary strip — total cases averted for selected plan
               fluidRow(
-                valueBox(
-                  value    = uiOutput("vbox_impacts"),
-                  subtitle = "Impacts Calculated",
-                  icon     = icon("calculator"),
-                  color    = "blue", width = 4
+                column(4,
+                       valueBox(
+                         value    = uiOutput("vbox_total_cases"),
+                         subtitle = uiOutput("vbox_total_label"),
+                         icon     = icon("heartbeat"),
+                         color    = "blue", width = 12
+                       )
                 ),
-                valueBox(
-                  value    = uiOutput("vbox_interventions"),
-                  subtitle = "Interventions",
-                  icon     = icon("medkit"),
-                  color    = "green", width = 4
+                column(4,
+                       valueBox(
+                         value    = uiOutput("vbox_n_interventions"),
+                         subtitle = "Interventions in this plan",
+                         icon     = icon("medkit"),
+                         color    = "green", width = 12
+                       )
                 ),
-                valueBox(
-                  value    = uiOutput("vbox_districts"),
-                  subtitle = "Districts",
-                  icon     = icon("map-marker"),
-                  color    = "yellow", width = 4
+                column(4,
+                       valueBox(
+                         value    = uiOutput("vbox_n_districts"),
+                         subtitle = "Districts covered",
+                         icon     = icon("map-marker"),
+                         color    = "yellow", width = 12
+                       )
                 )
               ),
               
-              # ── Top 5 for selected plan ───────────────────────────────────
+              # Top interventions chart
               fluidRow(
                 box(
                   width = 12,
-                  title = uiOutput("home_top5_title"),
-                  status = "success", solidHeader = TRUE,
-                  plotOutput("plot_home_top5", height = "350px")
+                  title = uiOutput("home_chart_title"),
+                  status = "primary", solidHeader = TRUE,
+                  plotOutput("plot_home_top", height = "380px")
                 )
               )
       ),
       
       # ========================================================================
-      # TAB 2: MAPS
+      # TAB 2: EXPLORE — Map + Ranking side by side per intervention
       # ========================================================================
-      tabItem(tabName = "maps",
-              h2(uiOutput("maps_title_inline")),
-              p("Districts colored by quantile: Red (low priority) → Green (high priority)"),
+      tabItem(tabName = "explore",
               
               fluidRow(
+                column(12,
+                       h2(uiOutput("explore_title")),
+                       uiOutput("explore_subtitle")
+                )
+              ),
+              
+              # ── Rank colour legend (shared between map and chart) ──────────────
+              fluidRow(
                 box(
-                  width = 12, title = "Map Configuration",
-                  status = "primary", solidHeader = TRUE,
-                  
-                  fluidRow(
-                    column(9,
-                           uiOutput("map_interventions_ui")
-                    ),
-                    column(3,
-                           actionButton(
-                             "generate_maps", "Generate Maps",
-                             icon  = icon("map"),
-                             class = "btn-success btn-lg btn-block",
-                             style = "margin-top: 0px;"
-                           )
-                    )
-                  ),
-                  
-                  tags$div(
-                    style = "margin-top: 10px; padding: 10px; background-color: #fff3cd; border-radius: 5px;",
-                    p(class = "small",
-                      "ℹ️ Changing the ", strong("Plan"), " or ", strong("Age Group"),
-                      " filters updates the maps automatically after clicking 'Generate Maps'.")
-                  ),
-                  
-                  tags$div(
-                    style = "margin-top: 10px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;",
-                    h5("📊 Quantile Color Scale:"),
-                    tags$ul(style = "margin: 5px 0;",
-                            tags$li("🟢 Dark green (80-100%): ", strong("HIGHEST PRIORITY")),
-                            tags$li("🟢 Light green (60-80%): High impact"),
-                            tags$li("🟡 Yellow (40-60%): Medium impact"),
-                            tags$li("🟠 Orange (20-40%): Low impact"),
-                            tags$li("🔴 Red (0-20%): Lowest priority")
-                    )
+                  width = 12, status = "primary", solidHeader = FALSE,
+                  collapsible = FALSE,
+                  div(style = "display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding: 5px 0;",
+                      strong("Priority rank:"),
+                      div(style = "display:flex; align-items:center; gap:6px;",
+                          div(style = "width:18px;height:18px;background:#1A9850;border-radius:3px;"),
+                          span("Rank 1-2 (highest)")),
+                      div(style = "display:flex; align-items:center; gap:6px;",
+                          div(style = "width:18px;height:18px;background:#91CF60;border-radius:3px;"),
+                          span("Rank 3-4")),
+                      div(style = "display:flex; align-items:center; gap:6px;",
+                          div(style = "width:18px;height:18px;background:#FEE08B;border-radius:3px;"),
+                          span("Rank 5-6")),
+                      div(style = "display:flex; align-items:center; gap:6px;",
+                          div(style = "width:18px;height:18px;background:#FC8D59;border-radius:3px;"),
+                          span("Rank 7-8")),
+                      div(style = "display:flex; align-items:center; gap:6px;",
+                          div(style = "width:18px;height:18px;background:#D73027;border-radius:3px;"),
+                          span("Rank 9-10 (lowest)"))
                   )
                 )
               ),
               
-              uiOutput("maps_container")
-      ),
-      
-      # ========================================================================
-      # TAB 3: RANKINGS
-      # ========================================================================
-      tabItem(tabName = "rankings",
-              h2(uiOutput("rankings_page_title")),
-              p("Bars show mean impact; error bars show min/max range across age groups"),
-              
+              # ── Map (left) + Bar chart (right) ────────────────────────────────
               fluidRow(
+                # Map
                 box(
-                  width = 12, title = "Configuration",
-                  status = "primary", solidHeader = TRUE,
-                  
-                  fluidRow(
-                    column(8,
-                           uiOutput("ranking_interventions_ui")
-                    ),
-                    column(4,
-                           sliderInput(
-                             "top_n", "Top N districts:",
-                             min = 5, max = 10, value = 10, step = 1
-                           )
-                    )
-                  ),
-                  
-                  tags$div(
-                    style = "margin-top: 10px; padding: 10px; background-color: #d4edda; border-radius: 5px;",
-                    p(class = "small",
-                      "✅ Both ", strong("Plan"), " and ", strong("Age Group"),
-                      " filters update rankings automatically.")
-                  )
+                  width = 6,
+                  title = uiOutput("map_title"),
+                  status = "success", solidHeader = TRUE,
+                  leafletOutput("map_explore", height = "480px")
+                ),
+                # Ranking bar chart
+                box(
+                  width = 6,
+                  title = uiOutput("chart_title"),
+                  status = "success", solidHeader = TRUE,
+                  plotOutput("plot_ranking", height = "480px")
                 )
               ),
               
+              # ── Data table (collapsible, hidden by default) ────────────────────
               fluidRow(
                 box(
                   width = 12,
-                  title = uiOutput("rankings_box_title"),
-                  status = "success", solidHeader = TRUE,
-                  plotOutput("plot_rankings", height = "auto")
+                  title = "📋 Data — click to expand",
+                  status = "info", solidHeader = FALSE,
+                  collapsible = TRUE, collapsed = TRUE,
+                  DTOutput("table_explore")
                 )
               )
       ),
       
       # ========================================================================
-      # TAB 4: DATA
+      # TAB 3: DATA
       # ========================================================================
       tabItem(tabName = "data",
-              h2("Data Tables"),
+              h2("Full Data Tables"),
               p(uiOutput("data_plan_label")),
               
               fluidRow(
-                box(width = 12, title = "Quantiles Data",
+                box(width = 12, title = "All Ranks",
                     status = "primary", solidHeader = TRUE,
-                    DTOutput("table_quantiles"))
+                    DTOutput("table_ranks_full"))
               ),
               fluidRow(
-                box(width = 12, title = "Rankings Data",
-                    status = "info", solidHeader = TRUE,
-                    DTOutput("table_rankings"))
-              ),
-              fluidRow(
-                box(width = 12, title = "Raw Impacts Data",
+                box(width = 12, title = "Raw Impacts",
                     status = "warning", solidHeader = TRUE,
-                    DTOutput("table_impacts"))
+                    DTOutput("table_impacts_full"))
               )
       )
     )

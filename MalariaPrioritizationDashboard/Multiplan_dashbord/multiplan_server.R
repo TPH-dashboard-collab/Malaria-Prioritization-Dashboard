@@ -204,19 +204,30 @@ server <- function(input, output, session) {
     )
     
     # Tooltip
+    metric_vals <- if (mc == "impact_per_1000") {
+      ifelse(is.na(map_data[[mc]]),
+             "No data",
+             as.character(round(map_data[[mc]], 2)))
+    } else {
+      ifelse(is.na(map_data[[mc]]),
+             "No data",
+             format(round(map_data[[mc]]), big.mark = ","))
+    }
+    
+    rank_vals  <- ifelse(is.na(map_data[[rac]]), "—", paste0("#", map_data[[rac]]))
+    group_vals <- ifelse(is.na(map_data[[rc]]),  "—", map_data[[rc]])
+    
     labels <- sprintf(
       "<strong>%s</strong><br/>
-       <strong>Rank:</strong> #%s<br/>
+       <strong>Rank:</strong> %s<br/>
        <strong>Rank group:</strong> %s<br/>
        <strong>%s:</strong> %s<br/>
        <strong>Plan:</strong> %s  ·  <strong>Age:</strong> %s",
       map_data$admin_2,
-      map_data[[rac]],
-      map_data[[rc]],
+      rank_vals,
+      group_vals,
       metric_label(),
-      ifelse(mc == "impact_per_1000",
-             round(map_data[[mc]], 2),
-             format(round(map_data[[mc]]), big.mark = ",")),
+      metric_vals,
       input$plan_filter,
       age_label()
     ) |> lapply(HTML)

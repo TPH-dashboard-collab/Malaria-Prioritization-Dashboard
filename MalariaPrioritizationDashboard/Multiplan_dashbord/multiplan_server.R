@@ -101,14 +101,27 @@ server <- function(input, output, session) {
   })
   
   output$vbox_total_cases <- renderUI({
-    val <- ranks_filtered() |>
-      summarise(total = sum(mean_impact, na.rm = TRUE)) |>
-      pull(total)
-    format(round(val), big.mark = ",")
+    data <- avg_impact_all |>
+      filter(plan == input$plan_filter, age_group == input$age_filter) |>
+      summarise(
+        total_cases = sum(mean_impact, na.rm = TRUE),
+        total_pop   = sum(nHost,       na.rm = TRUE)
+      )
+    
+    if (input$metric_filter == "impact_per_1000") {
+      val <- (data$total_cases / data$total_pop) * 1000
+      as.character(round(val, 2))
+    } else {
+      format(round(data$total_cases), big.mark = ",")
+    }
   })
   
   output$vbox_total_label <- renderUI({
-    paste("Total Cases Averted —", input$plan_filter, "|", age_label())
+    metric <- if (input$metric_filter == "impact_per_1000")
+      "Cases Averted per 1,000 people"
+    else
+      "Total Cases Averted"
+    paste(metric, "—", input$plan_filter, "|", age_label())
   })
   
   output$vbox_n_interventions <- renderUI({
@@ -124,32 +137,52 @@ server <- function(input, output, session) {
   })
   
   output$plot_home_top <- renderPlot({
-    data <- ranks_filtered() |>
+    
+    # Filter by selected age group to avoid double counting (0-5 + 0-100)
+    data <- avg_impact_all |>
+      filter(plan == input$plan_filter, age_group == input$age_filter) |>
       group_by(intervention) |>
       summarise(
-        total       = sum(mean_impact,    na.rm = TRUE),
-        total_1000  = sum(impact_per_1000, na.rm = TRUE),
+        total_cases = sum(mean_impact, na.rm = TRUE),
+        total_pop   = sum(nHost,       na.rm = TRUE),
         .groups = "drop"
       ) |>
-      mutate(active = if (input$metric_filter == "impact_per_1000") total_1000 else total) |>
+      mutate(
+        # Correct weighted rate: total cases averted / total population × 1000
+        # This is interpretable: "per 1,000 people across all districts"
+        weighted_per_1000 = (total_cases / total_pop) * 1000,
+        active = if (input$metric_filter == "impact_per_1000") weighted_per_1000 else total_cases
+      ) |>
       arrange(desc(active))
+    
+    y_label <- if (input$metric_filter == "impact_per_1000") {
+      "Cases Averted per 1,000 people (across all districts)"
+    } else {
+      "Total Cases Averted (all districts)"
+    }
     
     ggplot(data, aes(x = reorder(intervention, active), y = active, fill = intervention)) +
       geom_bar(stat = "identity", alpha = 0.85, width = 0.65) +
-      geom_text(aes(label = if (input$metric_filter == "impact_per_1000")
-        round(active, 1)
-        else
-          format(round(active), big.mark = ",")),
+      geom_text(
+        aes(label = if (input$metric_filter == "impact_per_1000")
+          round(active, 2)
+          else
+            format(round(active), big.mark = ",")),
         hjust = -0.1, size = 4.5) +
       scale_fill_brewer(palette = "Set2") +
       coord_flip() +
-      expand_limits(y = max(data$active) * 1.15) +
-      labs(x = "", y = metric_label(),
-           subtitle = paste(input$plan_filter, "·", age_label())) +
+      expand_limits(y = max(data$active) * 1.18) +
+      labs(
+        x        = "",
+        y        = y_label,
+        subtitle = paste(input$plan_filter, "·", age_label())
+      ) +
       theme_minimal(base_size = 13) +
-      theme(panel.grid.major.y = element_blank(),
-            legend.position    = "none",
-            plot.subtitle      = element_text(color = "gray50"))
+      theme(
+        panel.grid.major.y = element_blank(),
+        legend.position    = "none",
+        plot.subtitle      = element_text(color = "gray50")
+      )
   })
   
   # ============================================================================

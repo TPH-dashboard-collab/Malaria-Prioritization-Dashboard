@@ -18,10 +18,6 @@ library(stringr)
 library(tidyr)
 
 # ==============================================================================
-# STEP 1: LOAD AND PREPARE DATA
-# ==============================================================================
-
-# ==============================================================================
 # COLOUR PALETTE — Myro's blue palette function
 # Rank 1-2 = darkest blue (highest priority)
 # Rank 9-10 = lightest blue (lowest priority)
@@ -35,6 +31,9 @@ create_blue_palette <- function(n) {
   return(blue_ramp(n))
 }
 
+# ==============================================================================
+# STEP 1: LOAD AND PREPARE DATA
+# ==============================================================================
 
 cat("Loading data...\n")
 df <- fread("../data/TZ_subset_10regions_1seed.csv")
@@ -138,10 +137,16 @@ cat("✓ Functions loaded\n")
 # STEP 3: CALCULATE IMPACTS FOR ALL PLANS
 # ==============================================================================
 
-cat("\nCalculating impacts for ALL plans...\n")
+cat("\nCalculating impacts for NSP and BAU only...\n")
 
-df1 |> select(admin_2, age_group, scenario_name, plan) |> distinct() -> strata_all
-cat("✓ Found", nrow(strata_all), "scenarios across all plans\n")
+# Keep only NSP and BAU — Customized removed (384 scenarios, to be handled later)
+# NSP → scenario_name == "nsp"
+# BAU → scenario_name == "bau"
+df1 |>
+  filter(scenario_name %in% c("nsp", "bau")) |>
+  select(admin_2, age_group, scenario_name, plan) |>
+  distinct() -> strata_all
+cat("✓ Found", nrow(strata_all), "scenarios (NSP + BAU only)\n")
 
 impacts_all <- rbindlist(
   lapply(1:nrow(strata_all), function(i) {
@@ -163,14 +168,16 @@ impacts_all <- impacts_all |>
 cat("\n✓ Impacts calculated:", nrow(impacts_all), "rows\n")
 
 # ==============================================================================
-# STEP 4: avg_impact + population weighting
+# STEP 4: impact + population weighting
+# No averaging — each plan (NSP/BAU) has a unique scenario_name
+# Impact value is kept directly as-is from per_interv_impact()
 # ==============================================================================
 
-cat("\nCalculating avg_impact...\n")
+cat("\nPreparing impact data...\n")
 
 avg_impact_all <- impacts_all |>
-  group_by(plan, intervention, admin_2, age_group) |>
-  summarise(mean_impact = mean(value, na.rm = TRUE), .groups = "drop") |>
+  rename(mean_impact = value) |>
+  select(plan, intervention, admin_2, age_group, mean_impact) |>
   left_join(population_data, by = c("admin_2","age_group")) |>
   mutate(impact_per_1000 = (mean_impact / nHost) * 1000)
 

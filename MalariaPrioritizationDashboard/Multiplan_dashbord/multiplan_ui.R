@@ -21,9 +21,9 @@ ui <- dashboardPage(
     hr(),
     h4("Filters:", style = "padding: 0 15px;"),
     
-    # Plan
+    # Plan — NSP and BAU only (Customized removed, to be added later)
     selectInput("plan_filter", "Plan:",
-                choices = setNames(ALL_PLANS, ALL_PLANS),
+                choices  = c("NSP", "BAU"),
                 selected = "NSP"),
     
     # Age

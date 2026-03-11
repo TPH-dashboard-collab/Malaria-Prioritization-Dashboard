@@ -21,6 +21,21 @@ library(tidyr)
 # STEP 1: LOAD AND PREPARE DATA
 # ==============================================================================
 
+# ==============================================================================
+# COLOUR PALETTE — Myro's blue palette function
+# Rank 1-2 = darkest blue (highest priority)
+# Rank 9-10 = lightest blue (lowest priority)
+# ==============================================================================
+
+create_blue_palette <- function(n) {
+  stopifnot("n must be an integer > 0" = n > 0 && !is.na(n) && n == as.integer(n))
+  blues <- brewer.pal(9, "Blues")
+  blues <- blues[seq(3, length(blues))]
+  blue_ramp <- colorRampPalette(blues)
+  return(blue_ramp(n))
+}
+
+
 cat("Loading data...\n")
 df <- fread("../data/TZ_subset_10regions_1seed.csv")
 cat("✓ Raw data loaded:", nrow(df), "rows\n")

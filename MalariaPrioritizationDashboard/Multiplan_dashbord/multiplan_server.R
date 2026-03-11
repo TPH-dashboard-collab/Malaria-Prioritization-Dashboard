@@ -4,13 +4,13 @@
 
 server <- function(input, output, session) {
   
-  # Colour palette — rank group → colour (same on map and bar chart)
+  blue_palette <- create_blue_palette(5)
   rank_colors <- c(
-    "1-2"  = "#1A9850",   # dark green  — highest
-    "3-4"  = "#91CF60",   # light green
-    "5-6"  = "#FEE08B",   # yellow
-    "7-8"  = "#FC8D59",   # orange
-    "9-10" = "#D73027"    # red         — lowest
+    "1-2"  = blue_palette[5],   
+    "3-4"  = blue_palette[4],
+    "5-6"  = blue_palette[3],
+    "7-8"  = blue_palette[2],
+    "9-10" = blue_palette[1]  
   )
   
   plan_colors <- c(NSP = "#2980b9", BAU = "#7f8c8d", Customized = "#8e44ad")

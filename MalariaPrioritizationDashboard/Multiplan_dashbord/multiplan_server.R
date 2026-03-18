@@ -4,13 +4,16 @@
 
 server <- function(input, output, session) {
   
+  # Colour palette — rank group → blue shades (Myro's suggestion)
+  # create_blue_palette(5): rank 1-2 = darkest blue (highest priority)
+  #                         rank 9-10 = lightest blue (lowest priority)
   blue_palette <- create_blue_palette(5)
   rank_colors <- c(
-    "1-2"  = blue_palette[5],   
-    "3-4"  = blue_palette[4],
-    "5-6"  = blue_palette[3],
-    "7-8"  = blue_palette[2],
-    "9-10" = blue_palette[1]  
+    "1-2"  = "#08519C",   # darkest blue  — highest priority
+    "3-4"  = "#2171B5",
+    "5-6"  = "#4292C6",
+    "7-8"  = "#9ECAE1",
+    "9-10" = "#DEEBF7"    # lightest blue — lowest priority
   )
   
   plan_colors <- c(NSP = "#2980b9", BAU = "#7f8c8d", Customized = "#8e44ad")
@@ -44,19 +47,81 @@ server <- function(input, output, session) {
   })
   
   # ============================================================================
+  # REACTIVE IMPACT CALCULATION — runs live when plan changes (point 5)
+  # Triggered only for the selected plan — not pre-computed at startup
+  # Progress bar shown while calculating
+  # ============================================================================
+  
+  impacts_reactive <- reactiveVal(NULL)
+  
+  observeEvent(input$plan_filter, {
+    plan_selected <- input$plan_filter
+    scenario_selected <- tolower(plan_selected)  # "NSP" -> "nsp", "BAU" -> "bau"
+    
+    strata_plan <- strata_all[scenario_name == scenario_selected]
+    
+    withProgress(message = paste("Calculating impacts for", plan_selected, "..."),
+                 value = 0, {
+                   n <- nrow(strata_plan)
+                   results <- vector("list", n)
+                   
+                   for (i in seq_len(n)) {
+                     x <- strata_plan[i]
+                     results[[i]] <- tryCatch(
+                       per_interv_impact(df1,
+                                         indicator = "cum_nUncomp",
+                                         strata    = c(admin_2       = x$admin_2,
+                                                       age_group     = x$age_group,
+                                                       scenario_name = x$scenario_name,
+                                                       plan          = x$plan)),
+                       error = function(e) NULL
+                     )
+                     incProgress(1 / n, detail = paste(i, "/", n))
+                   }
+                   
+                   impacts_dt <- rbindlist(results)
+                   
+                   # Join plan back and rename value column
+                   impacts_dt <- merge(impacts_dt,
+                                       unique(strata_plan[, .(admin_2, age_group, scenario_name, plan)]),
+                                       by = c("admin_2", "age_group", "scenario_name"))
+                   setnames(impacts_dt, "value", "mean_impact")
+                   
+                   # Population weighting — data.table join
+                   impacts_dt <- merge(impacts_dt, population_data,
+                                       by = c("admin_2", "age_group"), all.x = TRUE)
+                   impacts_dt[, impact_per_1000 := (mean_impact / nHost) * 1000]
+                   
+                   # Ranks — data.table grouped operation
+                   impacts_dt[, rank_cases    := frank(-mean_impact,    ties.method = "min"),
+                              by = .(plan, intervention, age_group)]
+                   impacts_dt[, rank_per_1000 := frank(-impact_per_1000, ties.method = "min"),
+                              by = .(plan, intervention, age_group)]
+                   impacts_dt[, n_districts := .N,
+                              by = .(plan, intervention, age_group)]
+                   
+                   impacts_dt[, rank_group_cases    := rank_groups(rank_cases)]
+                   impacts_dt[, rank_group_per_1000 := rank_groups(rank_per_1000)]
+                   impacts_dt[, rank_num_cases      := rank_numeric(rank_cases)]
+                   impacts_dt[, rank_num_per_1000   := rank_numeric(rank_per_1000)]
+                   
+                   impacts_reactive(impacts_dt)
+                 })
+  }, ignoreNULL = FALSE)
+  
+  # ============================================================================
   # BASE REACTIVE — filtered ranks for selected plan + age
   # ============================================================================
   
   ranks_filtered <- reactive({
-    ranks_all |>
-      filter(plan == input$plan_filter, age_group == input$age_filter)
+    req(impacts_reactive())
+    impacts_reactive()[plan == input$plan_filter & age_group == input$age_filter]
   })
   
   # For selected intervention only
   ranks_intervention <- reactive({
     req(input$intervention_filter)
-    ranks_filtered() |>
-      filter(intervention == input$intervention_filter)
+    ranks_filtered()[intervention == input$intervention_filter]
   })
   
   # ============================================================================
@@ -64,6 +129,7 @@ server <- function(input, output, session) {
   # ============================================================================
   
   observe({
+    req(impacts_reactive())
     choices <- sort(unique(ranks_filtered()$intervention))
     updateSelectInput(session, "intervention_filter",
                       choices  = choices,
@@ -101,35 +167,24 @@ server <- function(input, output, session) {
   })
   
   output$vbox_total_cases <- renderUI({
-    data <- avg_impact_all |>
-      filter(plan == input$plan_filter, age_group == input$age_filter) |>
-      summarise(
-        total_cases = sum(mean_impact, na.rm = TRUE),
-        total_pop   = sum(nHost,       na.rm = TRUE)
-      )
-    
-    if (input$metric_filter == "impact_per_1000") {
-      val <- (data$total_cases / data$total_pop) * 1000
-      as.character(round(val, 2))
-    } else {
-      format(round(data$total_cases), big.mark = ",")
-    }
+    req(impacts_reactive())
+    val <- impacts_reactive()[plan == input$plan_filter & age_group == input$age_filter,
+                              sum(mean_impact, na.rm = TRUE)]
+    format(round(val), big.mark = ",")
   })
   
   output$vbox_total_label <- renderUI({
-    metric <- if (input$metric_filter == "impact_per_1000")
-      "Cases Averted per 1,000 people"
-    else
-      "Total Cases Averted"
-    paste(metric, "—", input$plan_filter, "|", age_label())
+    paste("Total Cases Averted —", input$plan_filter, "|", age_label())
   })
   
   output$vbox_n_interventions <- renderUI({
-    n_distinct(ranks_filtered()$intervention)
+    req(impacts_reactive())
+    uniqueN(ranks_filtered()$intervention)
   })
   
   output$vbox_n_districts <- renderUI({
-    n_distinct(ranks_filtered()$admin_2)
+    req(impacts_reactive())
+    uniqueN(ranks_filtered()$admin_2)
   })
   
   output$home_chart_title <- renderUI({
@@ -138,22 +193,15 @@ server <- function(input, output, session) {
   
   output$plot_home_top <- renderPlot({
     
-    # Filter by selected age group to avoid double counting (0-5 + 0-100)
-    data <- avg_impact_all |>
-      filter(plan == input$plan_filter, age_group == input$age_filter) |>
-      group_by(intervention) |>
-      summarise(
-        total_cases = sum(mean_impact, na.rm = TRUE),
-        total_pop   = sum(nHost,       na.rm = TRUE),
-        .groups = "drop"
-      ) |>
-      mutate(
-        # Correct weighted rate: total cases averted / total population × 1000
-        # This is interpretable: "per 1,000 people across all districts"
-        weighted_per_1000 = (total_cases / total_pop) * 1000,
-        active = if (input$metric_filter == "impact_per_1000") weighted_per_1000 else total_cases
-      ) |>
-      arrange(desc(active))
+    req(impacts_reactive())
+    # Filter by selected plan + age — data.table aggregation
+    data <- impacts_reactive()[plan == input$plan_filter & age_group == input$age_filter,
+                               .(total_cases = sum(mean_impact, na.rm = TRUE),
+                                 total_pop   = sum(nHost,       na.rm = TRUE)),
+                               by = intervention]
+    data[, weighted_per_1000 := (total_cases / total_pop) * 1000]
+    data[, active := if (input$metric_filter == "impact_per_1000") weighted_per_1000 else total_cases]
+    setorder(data, -active)
     
     y_label <- if (input$metric_filter == "impact_per_1000") {
       "Cases Averted per 1,000 people (across all districts)"
@@ -216,7 +264,7 @@ server <- function(input, output, session) {
   # ============================================================================
   
   output$map_explore <- renderLeaflet({
-    req(input$intervention_filter)
+    req(impacts_reactive(), input$intervention_filter)
     
     rc  <- rank_col()
     rnc <- rank_num_col()
@@ -225,9 +273,10 @@ server <- function(input, output, session) {
     
     data_interv <- ranks_intervention()
     
-    # Join to shapefile
-    map_data <- shapefiles |>
-      left_join(data_interv, by = "admin_2")
+    # Join to shapefile — merge sf object with data.table
+    # Using base merge to avoid dplyr dependency
+    map_data <- merge(shapefiles, as.data.frame(data_interv),
+                      by = "admin_2", all.x = TRUE)
     
     # Colour palette — rank group
     pal <- colorFactor(
@@ -295,21 +344,19 @@ server <- function(input, output, session) {
   # ============================================================================
   
   output$plot_ranking <- renderPlot({
-    req(input$intervention_filter)
+    req(impacts_reactive(), input$intervention_filter)
     
     rc  <- rank_col()
     rac <- rank_abs_col()
     mc  <- metric_col()
     
-    data_plot <- ranks_intervention() |>
-      arrange(.data[[rac]]) |>
-      slice_head(n = input$top_n) |>
-      mutate(
-        active_value  = .data[[mc]],
-        active_rank   = .data[[rac]],
-        active_group  = .data[[rc]],
-        district_label = paste0("#", active_rank, " ", admin_2)
-      )
+    data_plot <- copy(ranks_intervention())
+    setorderv(data_plot, rac)
+    data_plot <- head(data_plot, input$top_n)
+    data_plot[, active_value   := .SD[[1]], .SDcols = mc]
+    data_plot[, active_rank    := .SD[[1]], .SDcols = rac]
+    data_plot[, active_group   := .SD[[1]], .SDcols = rc]
+    data_plot[, district_label := paste0("#", active_rank, " ", admin_2)]
     
     y_max <- max(data_plot$active_value, na.rm = TRUE)
     
@@ -355,13 +402,14 @@ server <- function(input, output, session) {
   output$table_explore <- renderDT({
     req(input$intervention_filter)
     
-    data <- ranks_intervention() |>
-      select(plan, intervention, admin_2, age_group,
-             mean_impact, impact_per_1000,
-             rank_cases, rank_per_1000,
-             rank_group_cases, rank_group_per_1000) |>
-      arrange(rank_cases) |>
-      mutate(across(where(is.numeric), ~ round(., 2)))
+    cols <- c("plan", "intervention", "admin_2", "age_group",
+              "mean_impact", "impact_per_1000",
+              "rank_cases", "rank_per_1000",
+              "rank_group_cases", "rank_group_per_1000")
+    data <- copy(ranks_intervention()[, ..cols])
+    setorder(data, rank_cases)
+    num_cols <- names(data)[sapply(data, is.numeric)]
+    data[, (num_cols) := lapply(.SD, round, 2), .SDcols = num_cols]
     
     datatable(data,
               rownames = FALSE,
@@ -384,28 +432,27 @@ server <- function(input, output, session) {
   })
   
   output$table_ranks_full <- renderDT({
-    datatable(
-      ranks_all |>
-        filter(plan == input$plan_filter, age_group == input$age_filter) |>
-        select(plan, intervention, admin_2, age_group,
-               mean_impact, impact_per_1000,
-               rank_cases, rank_group_cases,
-               rank_per_1000, rank_group_per_1000) |>
-        mutate(across(where(is.numeric), ~ round(., 2))) |>
-        arrange(intervention, rank_cases),
-      rownames = FALSE, filter = "top",
-      options  = list(pageLength = 20, scrollX = TRUE)
-    )
+    req(impacts_reactive())
+    cols <- c("plan", "intervention", "admin_2", "age_group",
+              "mean_impact", "impact_per_1000",
+              "rank_cases", "rank_group_cases",
+              "rank_per_1000", "rank_group_per_1000")
+    dt <- copy(impacts_reactive()[plan == input$plan_filter &
+                                    age_group == input$age_filter,
+                                  ..cols])
+    num_cols <- names(dt)[sapply(dt, is.numeric)]
+    dt[, (num_cols) := lapply(.SD, round, 2), .SDcols = num_cols]
+    setorder(dt, intervention, rank_cases)
+    datatable(dt, rownames = FALSE, filter = "top",
+              options = list(pageLength = 20, scrollX = TRUE))
   })
   
   output$table_impacts_full <- renderDT({
-    datatable(
-      impacts_all |>
-        filter(plan == input$plan_filter) |>
-        mutate(value = round(value, 1)) |>
-        arrange(intervention, admin_2, age_group),
-      rownames = FALSE, filter = "top",
-      options  = list(pageLength = 25, scrollX = TRUE)
-    )
+    req(impacts_reactive())
+    dt <- copy(impacts_reactive()[plan == input$plan_filter])
+    dt[, mean_impact := round(mean_impact, 1)]
+    setorder(dt, intervention, admin_2, age_group)
+    datatable(dt, rownames = FALSE, filter = "top",
+              options = list(pageLength = 25, scrollX = TRUE))
   })
 }

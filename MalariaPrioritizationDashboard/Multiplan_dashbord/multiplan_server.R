@@ -1,5 +1,5 @@
 # ==============================================================================
-# server.R — Multi-Plan Dashboard (Restructured)
+# server.R — Multi-Plan Dashboard 
 # ==============================================================================
 
 server <- function(input, output, session) {
@@ -63,23 +63,24 @@ server <- function(input, output, session) {
     withProgress(message = paste("Calculating impacts for", plan_selected, "..."),
                  value = 0, {
                    n <- nrow(strata_plan)
-                   results <- vector("list", n)
                    
-                   for (i in seq_len(n)) {
-                     x <- strata_plan[i]
-                     results[[i]] <- tryCatch(
-                       per_interv_impact(df1,
-                                         indicator = "cum_nUncomp",
-                                         strata    = c(admin_2       = x$admin_2,
-                                                       age_group     = x$age_group,
-                                                       scenario_name = x$scenario_name,
-                                                       plan          = x$plan)),
-                       error = function(e) NULL
-                     )
-                     incProgress(1 / n, detail = paste(i, "/", n))
-                   }
-                   
-                   impacts_dt <- rbindlist(results)
+                   # lapply + rbindlist — faster than for loop, native data.table approach
+                   impacts_dt <- rbindlist(
+                     lapply(seq_len(n), function(i) {
+                       incProgress(1 / n, detail = paste(i, "/", n))
+                       x <- strata_plan[i]
+                       tryCatch(
+                         per_interv_impact(df1,
+                                           indicator = "cum_nUncomp",
+                                           strata    = c(admin_2       = x$admin_2,
+                                                         age_group     = x$age_group,
+                                                         scenario_name = x$scenario_name,
+                                                         plan          = x$plan)),
+                         error = function(e) NULL
+                       )
+                     }),
+                     fill = TRUE
+                   )
                    
                    # Join plan back and rename value column
                    impacts_dt <- merge(impacts_dt,
@@ -275,7 +276,7 @@ server <- function(input, output, session) {
     
     # Join to shapefile — merge sf object with data.table
     # Using base merge to avoid dplyr dependency
-    map_data <- merge(shapefiles, as.data.frame(data_interv),
+    map_data <- merge(shapefiles, data_interv,
                       by = "admin_2", all.x = TRUE)
     
     # Colour palette — rank group
